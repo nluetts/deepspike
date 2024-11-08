@@ -1,36 +1,41 @@
+/// We start by implementing a simple framework to simulate spectra based on
+/// peak functions. The peak functions can be chained by putting them into
+/// a vector and folding it while applying the function.
 use std::f32::consts::PI;
 
 fn main() {
-    let peak1 = Gauss {
+    let peak1 = Box::new(Gauss {
         x0: 500.0,
         a: 4.0,
         s: 20.0,
-    };
-    let peak2 = Lorentz {
+    });
+    let peak2 = Box::new(Lorentz {
         x0: 200.0,
         a: 6.0,
         s: 50.0,
-    };
+    });
+    let peaks: Vec<Box<dyn PeakFunction>> = vec![peak1, peak2];
 
-    for (i, x) in (1..=1340)
-        .map(|x| peak1.apply(x as f32, 0.0).then(&peak2))
-        .enumerate()
-    {
+    for (i, x) in (1..=1340).map(|x| peaks.apply(x as f32, 0.0)).enumerate() {
         println!("{},{}", i + 1, x.1)
     }
 }
 
 trait PeakFunction {
+    /// `x` value: for which x to calculate peak function  
+    /// `y0` value: offset
+    ///
+    /// returns `(x, f(x) + y0)`
     fn apply(&self, x: f32, y0: f32) -> (f32, f32);
 }
 
-trait NextPeakFunction<T> {
-    fn then(self, fun: &impl PeakFunction) -> Self;
+trait PeakPipeline {
+    fn apply(&self, x: f32, y0: f32) -> (f32, f32);
 }
 
-impl NextPeakFunction<(f32, f32)> for (f32, f32) {
-    fn then(self, fun: &impl PeakFunction) -> Self {
-        fun.apply(self.0, self.1)
+impl PeakPipeline for Vec<Box<dyn PeakFunction>> {
+    fn apply(&self, x: f32, y0: f32) -> (f32, f32) {
+        self.iter().fold((x, y0), |(x, y), peak| peak.apply(x, y))
     }
 }
 
