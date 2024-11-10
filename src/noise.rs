@@ -1,17 +1,29 @@
-use std::fs::File;
-use std::io::Read;
+use oorandom::Rand32;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-pub fn uniform(n: usize) -> std::io::Result<Vec<f32>> {
-    let mut buf32 = [0u8; 4];
-    let mut buf = vec![0; 4 * n];
+pub fn pseudo_normal(n: usize, seed: Option<u64>) -> Vec<f32> {
     let mut xs = Vec::with_capacity(n);
-    File::open("/dev/random")?.read_exact(&mut buf)?;
-    for c in buf.chunks_exact(4) {
-        for i in 0..4 {
-            buf32[i] = c[i]
+    let seed = seed.unwrap_or_else(|| {
+        return time_ns();
+    });
+    let mut rng = Rand32::new(seed);
+    let mut num = 0.0;
+    let mut count = 0;
+    for _ in 0..n * 12 {
+        num += rng.rand_float();
+        count += 1;
+        if count == 12 {
+            xs.push(num - 6.0);
+            count = 0;
+            num = 0.0;
         }
-        let x = u32::from_ne_bytes(buf32);
-        xs.push(x as f32 / u32::MAX as f32)
     }
-    Ok(xs)
+    xs
+}
+
+pub fn time_ns() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64
 }

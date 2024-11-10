@@ -4,38 +4,37 @@
 mod noise;
 
 use std::f32::consts::PI;
+use std::io::Write;
+
+use noise::time_ns;
+use oorandom::Rand32;
 
 fn main() {
-    let peaks: Vec<Box<dyn PeakFunction>> = vec![
-        Box::new(Skew::left(Gauss::new(1000.0, 6.0, 110.0), 0.18)),
-        Box::new(Skew::left(Gauss::new(1050.0, 6.5, 115.0), 0.2)),
-        Box::new(Skew::left(Gauss::new(1100.0, 7.0, 120.0), 0.22)),
-        Box::new(Skew::left(Gauss::new(1150.0, 7.5, 125.0), 0.24)),
-        Box::new(Skew::left(Gauss::new(1200.0, 8.0, 130.0), 0.26)),
-        Box::new(Skew::left(Gauss::new(1250.0, 8.5, 135.0), 0.28)),
-        Box::new(Skew::left(Gauss::new(800.0, 4.0, 90.0), 0.1)),
-        Box::new(Skew::left(Gauss::new(850.0, 4.5, 95.0), 0.12)),
-        Box::new(Skew::left(Gauss::new(900.0, 5.0, 100.0), 0.14)),
-        Box::new(Skew::left(Gauss::new(950.0, 5.5, 105.0), 0.16)),
-        Box::new(Skew::right(Lorentz::new(200.0, 6.0, 50.0), 1e-2)),
-        Box::new(Skew::right(Lorentz::new(220.0, 6.5, 55.0), 1.2e-2)),
-        Box::new(Skew::right(Lorentz::new(240.0, 7.0, 60.0), 1.4e-2)),
-        Box::new(Skew::right(Lorentz::new(260.0, 7.5, 65.0), 1.6e-2)),
-        Box::new(Skew::right(Lorentz::new(280.0, 8.0, 70.0), 1.8e-2)),
-        Box::new(Skew::right(Lorentz::new(300.0, 8.5, 75.0), 2e-2)),
-        Box::new(Skew::right(Lorentz::new(320.0, 9.0, 80.0), 2.2e-2)),
-        Box::new(Skew::right(Lorentz::new(340.0, 9.5, 85.0), 2.4e-2)),
-        Box::new(Skew::right(Lorentz::new(360.0, 10.0, 90.0), 2.6e-2)),
-        Box::new(Skew::right(Lorentz::new(380.0, 10.5, 95.0), 2.8e-2)),
-    ];
-    let noise = noise::uniform(1340).unwrap();
+    let mut rng = Rand32::new(1);
 
-    for (i, x) in (0..1340)
-        .zip(noise)
-        .map(|(x, n)| peaks.apply(x as f32, n / 300.0))
-        .enumerate()
-    {
-        println!("{},{}", i + 1, x.1)
+    for n_spec in 1..=100 {
+        let path = format!("train/train_spec_{}", n_spec);
+        eprintln!("INFO: writing file {path}");
+        let mut file = std::fs::File::create(&path).expect(&format!("Cannot write to file {path}"));
+        let peaks = random_peaks(20, time_ns());
+
+        for _n_frames in 0..rng.rand_range(3..12) {
+            let noise = noise::pseudo_normal(1340, None);
+            for (i, x) in (0..1340)
+                .zip(noise)
+                .map(|(x, n)| {
+                    let (x, mut y) = peaks.apply(x as f32, n);
+                    if rng.rand_float() > 0.99 {
+                        y = y.abs() * 30.0;
+                    }
+                    (x, y)
+                })
+                .enumerate()
+            {
+                let _ = writeln!(file, "{},{}", i + 1, x.1)
+                    .map_err(|err| eprintln!("WARN: could not write to file {path}: {err}"));
+            }
+        }
     }
 }
 
@@ -142,4 +141,26 @@ impl<T: PeakFunction> PeakFunction for Skew<T> {
     fn center(&self) -> f32 {
         self.p.center()
     }
+}
+
+fn random_peaks(n: usize, seed: u64) -> Vec<Box<dyn PeakFunction>> {
+    let mut peaks: Vec<Box<dyn PeakFunction>> = Vec::with_capacity(n);
+    let mut rng = Rand32::new(seed);
+    for _ in 0..n {
+        let x0 = rng.rand_float() * 1340.0;
+        let a = 100.0 + rng.rand_float() * 1000.0;
+        let s = 1.0 + rng.rand_float() * 25.0;
+        let k = rng.rand_float() / 10.0;
+        let f = rng.rand_float();
+        if f < 0.25 {
+            peaks.push(Box::new(Skew::left(Gauss::new(x0, a, s), k)));
+        } else if f < 0.5 {
+            peaks.push(Box::new(Skew::right(Gauss::new(x0, a, s), k)));
+        } else if f < 0.75 {
+            peaks.push(Box::new(Skew::left(Lorentz::new(x0, a, s), k)));
+        } else {
+            peaks.push(Box::new(Skew::right(Lorentz::new(x0, a, s), k)));
+        }
+    }
+    peaks
 }
