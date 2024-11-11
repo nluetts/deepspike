@@ -4,37 +4,50 @@
 mod noise;
 
 use std::f32::consts::PI;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 
 use noise::time_ns;
 use oorandom::Rand32;
 
 fn main() {
-    let mut rng = Rand32::new(1);
+    let handles: Vec<_> = (1..=100)
+        .map(|n_spec| {
+            let h = std::thread::spawn(move || {
+                let mut rng = Rand32::new(1);
+                let path = format!("train/train_spec_{}", n_spec);
+                eprintln!("INFO: writing file {path}");
+                let mut file = BufWriter::new(
+                    std::fs::File::create(&path)
+                        .unwrap_or_else(|err| panic!("Cannot write to file {path}: {err}")),
+                );
+                let peaks = random_peaks(20, time_ns());
 
-    for n_spec in 1..=100 {
-        let path = format!("train/train_spec_{}", n_spec);
-        eprintln!("INFO: writing file {path}");
-        let mut file = std::fs::File::create(&path).expect(&format!("Cannot write to file {path}"));
-        let peaks = random_peaks(20, time_ns());
-
-        for _n_frames in 0..rng.rand_range(3..12) {
-            let noise = noise::pseudo_normal(1340, None);
-            for (i, x) in (0..1340)
-                .zip(noise)
-                .map(|(x, n)| {
-                    let (x, mut y) = peaks.apply(x as f32, n);
-                    if rng.rand_float() > 0.99 {
-                        y = y.abs() * 30.0;
+                for _n_frames in 0..rng.rand_range(3..12) {
+                    let noise = noise::pseudo_normal(1340, None);
+                    for (i, x) in (0..1340)
+                        .zip(noise)
+                        .map(|(x, n)| {
+                            let (x, mut y) = peaks.apply(x as f32, n);
+                            if rng.rand_float() > 0.99 {
+                                y = y.abs() * 30.0;
+                            }
+                            (x, y)
+                        })
+                        .enumerate()
+                    {
+                        let _ = writeln!(file, "{},{}", i + 1, x.1).map_err(|err| {
+                            eprintln!("WARN: could not write to file {path}: {err}")
+                        });
                     }
-                    (x, y)
-                })
-                .enumerate()
-            {
-                let _ = writeln!(file, "{},{}", i + 1, x.1)
-                    .map_err(|err| eprintln!("WARN: could not write to file {path}: {err}"));
-            }
-        }
+                }
+            });
+            (n_spec, h)
+        })
+        .collect();
+    for (n_spec, h) in handles {
+        let _res = h
+            .join()
+            .map_err(|_| eprintln!("WARN: could not generate spectrum {n_spec}"));
     }
 }
 

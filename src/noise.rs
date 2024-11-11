@@ -3,9 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn pseudo_normal(n: usize, seed: Option<u64>) -> Vec<f32> {
     let mut xs = Vec::with_capacity(n);
-    let seed = seed.unwrap_or_else(|| {
-        return time_ns();
-    });
+    let seed = seed.unwrap_or_else(time_ns);
     let mut rng = Rand32::new(seed);
     let mut num = 0.0;
     let mut count = 0;
