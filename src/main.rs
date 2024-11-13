@@ -24,18 +24,23 @@ fn main() {
 
                 for _n_frames in 0..rng.rand_range(3..12) {
                     let noise = noise::pseudo_normal(1340, None);
-                    for (i, x) in (0..1340)
+                    let spec_dat: Vec<_> = (0..1340)
                         .zip(noise)
-                        .map(|(x, n)| {
-                            let (x, mut y) = peaks.apply(x as f32, n);
-                            if rng.rand_float() > 0.99 {
-                                y = y.abs() * 30.0;
-                            }
-                            (x, y)
-                        })
+                        .map(|(x, n)| peaks.apply(x as f32, n))
                         .enumerate()
-                    {
-                        let _ = writeln!(file, "{},{}", i + 1, x.1).map_err(|err| {
+                        .collect();
+                    // write spectrum without spikes
+                    for (i, (_, y)) in spec_dat.iter() {
+                        let _ = writeln!(file, "{},{}", i + 1, y).map_err(|err| {
+                            eprintln!("WARN: could not write to file {path}: {err}")
+                        });
+                    }
+                    // write spectrum _with_ spikes
+                    for (i, (_, mut y)) in spec_dat.iter() {
+                        if rng.rand_float() > 0.99 {
+                            y = y.abs() * 30.0;
+                        }
+                        let _ = writeln!(file, "{},{}", i + 1, y).map_err(|err| {
                             eprintln!("WARN: could not write to file {path}: {err}")
                         });
                     }
